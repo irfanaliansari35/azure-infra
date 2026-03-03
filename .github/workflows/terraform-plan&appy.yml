@@ -1,0 +1,48 @@
+name: Terraform Plan & Apply
+
+on:
+  push:
+    branches:
+      - 'feature/**'   # 👈 Only feature branches
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: dev
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    # 🔐 Azure Login
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    # 📦 Setup Terraform
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    # 🔎 Terraform Init using backend.hcl
+    - name: Terraform Init
+      run: terraform init -backend-config=backend.hcl
+
+    # ✅ Validate
+    - name: Terraform Validate
+      run: terraform validate
+
+    # 📊 Plan
+    - name: Terraform Plan
+      run: terraform plan -var-file=dev.tfvars -out=tfplan
+
+    # 🚀 Apply
+    - name: Terraform Apply
+      run: terraform apply -auto-approve tfplan
