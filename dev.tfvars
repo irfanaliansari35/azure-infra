@@ -1,1 +1,1 @@
-rg-name = "rg-devv-01"
+rg-name = "rg-dev-01"
