@@ -1,0 +1,118 @@
+trigger:
+- main
+
+pool:
+  name: ado-agent
+  timeoutInMinutes: 60
+
+variables:
+  terraformVersion: '1.6.6'
+  backendKey: 'prod.terraform.tfstate'
+
+stages:
+# =====================================================
+# STAGE 1: BUILD (Validate + Plan)
+# =====================================================
+- stage: Build
+  displayName: 'Build (Validate & Plan)'
+  jobs:
+  - job: TerraformBuild
+    displayName: 'Terraform Build'
+    steps:
+
+    # ---------- Agent bootstrap ----------
+    - task: Bash@3
+      displayName: 'Agent bootstrap'
+      inputs:
+        targetType: inline
+        script: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y unzip curl
+          which unzip
+          unzip -v
+
+    # ---------- Install Terraform ----------
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: $(terraformVersion)
+
+    # ---------- Terraform init ----------
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-release-task.TerraformTask@5
+      displayName: 'Terraform init'
+      inputs:
+        command: init
+        backendServiceArm: 'ado-infra-deployment'
+        backendAzureRmStorageAccountName: satfmanage
+        backendAzureRmContainerName: tfstate
+        backendAzureRmKey: $(backendKey)
+
+    # ---------- Terraform validate ----------
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-release-task.TerraformTask@5
+      displayName: 'Terraform validate'
+      inputs:
+        command: validate
+
+    # ---------- Terraform plan ----------
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-release-task.TerraformTask@5
+      displayName: 'Terraform plan'
+      inputs:
+        command: plan
+        environmentServiceNameAzureRM: 'ado-infra-deployment'
+
+# =====================================================
+# STAGE 2: MANUAL APPROVAL
+# =====================================================
+- stage: Approval
+  displayName: 'Manual Validation'
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - job: ManualApproval
+    displayName: 'Approve Terraform Apply'
+    pool: server
+    timeoutInMinutes: 1440
+    steps:
+    - task: ManualValidation@0
+      inputs:
+        instructions: |
+          Please review the Terraform plan output.
+          Approve to proceed with Terraform Apply.
+        onTimeout: reject
+
+# =====================================================
+# STAGE 3: DEPLOY (Apply)
+# =====================================================
+- stage: Deploy
+  displayName: 'Deploy (Terraform Apply)'
+  dependsOn: Approval
+  condition: succeeded()
+  jobs:
+  - deployment: TerraformDeploy
+    displayName: 'Terraform Apply'
+    environment: prod
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: $(terraformVersion)
+
+          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-release-task.TerraformTask@5
+            displayName: 'Terraform init'
+            inputs:
+              command: init
+              backendServiceArm: 'ado-infra-deployment'
+              backendAzureRmStorageAccountName: satfmanage
+              backendAzureRmContainerName: tfstate
+              backendAzureRmKey: $(backendKey)
+
+          - task: ms-devlabs.custom-terraform-tasks.custom-terraform-release-task.TerraformTask@5
+            displayName: 'Terraform apply'
+            inputs:
+              command: apply
+              environmentServiceNameAzureRM: 'ado-infra-deployment'
+              args: '-auto-approve'
