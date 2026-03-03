@@ -1,4 +1,4 @@
 resource "azurerm_resource_group" "example" {
-  name     = "rg-app"
+  name     = var.rg-name
   location = "uksouth"
 }
