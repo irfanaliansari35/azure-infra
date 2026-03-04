@@ -3,7 +3,11 @@ name: Terraform Plan & Apply
 on:
   push:
     branches:
-      - 'feature/**'   # 👈 Only feature branches
+      - 'main'
+      - 'featre/**'
+    pull_request:
+      branches:
+      - 'main'
 
 permissions:
   contents: read
@@ -44,6 +48,7 @@ jobs:
 
   
   terraform-apply:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: terraform-plan
     runs-on: ubuntu-latest
     environment: dev
